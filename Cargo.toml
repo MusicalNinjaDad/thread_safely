@@ -10,7 +10,6 @@ edition = "2024"
 version = "0.0.1"
 
 [dependencies]
-try_v2 = "0.11.0"
 
 [build-dependencies]
 build_safely =  "0.6.1"
