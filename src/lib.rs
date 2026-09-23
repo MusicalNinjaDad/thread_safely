@@ -23,24 +23,37 @@
 //!
 //! ```
 
-use std::ops::{FromResidual, Residual, Try};
+use std::{
+    ops::{FromResidual, Residual, Try},
+    sync::{Arc, atomic::AtomicBool},
+};
 
 pub mod prelude {
     pub use super::{Context, Controller};
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Context {}
+#[derive(Debug, Clone)]
+pub struct Context {
+    cancelled: Arc<AtomicBool>,
+}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Controller {}
+#[derive(Debug, Clone)]
+pub struct Controller {
+    cancelled: Arc<AtomicBool>,
+}
 
 impl Controller {
     pub fn new() -> (Controller, Context) {
-        (Controller {}, Context {})
+        let cancelled = Arc::from(AtomicBool::new(false));
+        (
+            Controller {
+                cancelled: cancelled.clone(),
+            },
+            Context { cancelled },
+        )
     }
 
-    pub fn cancel() {}
+    pub fn cancel(&self) {}
 }
 
 impl Try for Context {
@@ -78,10 +91,16 @@ mod tests {
     #[test]
     fn cancellation() {
         let (workerthreads, keepalive) = Controller::new();
-        let _worker = thread::spawn(move || try {
-            loop {
-                keepalive?
-            }
+        let worker = thread::spawn(move || {
+            try {
+                loop {
+                    keepalive.clone()?
+                }
+            };
+            true
         });
+        workerthreads.cancel();
+        let work = worker.join().unwrap();
+        assert!(work);
     }
 }
