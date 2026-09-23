@@ -9,18 +9,35 @@
 //! ## Binaries
 //!
 //! ```
+//! #![cfg_attr(unstable_try_blocks, feature(try_blocks))]
+//! # use std::time::Duration;
+//! use std::thread;
 //! use thread_safely::prelude::*;
 //! // Set up a [Controller] and (clonable) [Context]
 //! let (workerthreads, keepalive): (Controller, Context) = Controller::new();
 //!
 //! // set up a load of threads
-//! // ...
+//! let worker = thread::spawn(move || {
+//!     let mut counter = 0;
+//!     try {
+//!         for _ in 0.. {
+//!             counter += 1;
+//!             assert_eq!(counter % 2, 1); // odd
+//!             keepalive.clone()?;
+//!             counter += 1;
+//!             assert_eq!(counter % 2, 0); // even
+//!         };
+//!     };
+//!     counter
+//! });
 //!
 //! // cancel the workers when something happens
 //! workerthreads.cancel();
 //!
-//! // You still need to join your threads before you finish
-//!
+//! // You still need to join your threads before you finish for soundness reasons
+//! # thread::sleep(Duration::from_secs(1));
+//! let count = worker.join().unwrap();
+//! assert_eq!(count % 2, 1); // we exited mid loop
 //! ```
 
 use std::{
@@ -62,25 +79,29 @@ impl Controller {
 }
 
 impl Try for Context {
-    type Output = Self;
+    type Output = ();
 
     type Residual = Cancelled;
 
-    fn from_output(output: Self::Output) -> Self {
-        output
+    fn from_output(_output: Self::Output) -> Self {
+        unimplemented!("from_output")
     }
 
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
         match self.cancelled.load(Ordering::Acquire) {
-            true => ControlFlow::Break(Cancelled{cancelled: self.cancelled}),
-            false => ControlFlow::Continue(self),
+            true => ControlFlow::Break(Cancelled {
+                cancelled: self.cancelled,
+            }),
+            false => ControlFlow::Continue(()),
         }
     }
 }
 
 impl FromResidual for Context {
     fn from_residual(residual: Cancelled) -> Self {
-        Self { cancelled: residual.cancelled }
+        Self {
+            cancelled: residual.cancelled,
+        }
     }
 }
 
@@ -88,7 +109,7 @@ pub struct Cancelled {
     cancelled: Arc<AtomicBool>,
 }
 
-impl Residual<Context> for Cancelled {
+impl Residual<()> for Cancelled {
     type TryType = Context;
 }
 
