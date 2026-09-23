@@ -57,28 +57,28 @@ impl Controller {
 }
 
 impl Try for Context {
-    type Output = ();
+    type Output = Self;
 
     type Residual = Cancelled;
 
     fn from_output(output: Self::Output) -> Self {
-        todo!()
+        todo!("from output")
     }
 
     fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
-        todo!()
+        todo!("branch")
     }
 }
 
 impl FromResidual for Context {
     fn from_residual(residual: <Self as Try>::Residual) -> Self {
-        todo!()
+        todo!("residual")
     }
 }
 
 pub struct Cancelled;
 
-impl Residual<()> for Cancelled {
+impl Residual<Context> for Cancelled {
     type TryType = Context;
 }
 
@@ -91,14 +91,14 @@ mod tests {
     #[test]
     fn cancellation() {
         let (workerthreads, keepalive) = Controller::new();
-        let worker = thread::spawn(move || {
+        let worker = thread::Builder::new().name("worker".to_string()).spawn(move || {
             try {
                 loop {
-                    keepalive.clone()?
+                    keepalive.clone()?;
                 }
             };
             true
-        });
+        }).unwrap();
         workerthreads.cancel();
         let work = worker.join().unwrap();
         assert!(work);
