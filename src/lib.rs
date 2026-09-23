@@ -139,4 +139,27 @@ mod tests {
         let work = worker.join().unwrap();
         assert!(work);
     }
+
+    #[test]
+    fn let_foo_eq_try() {
+        let (workerthreads, keepalive): (Controller, Context) = Controller::new();
+
+        // set up a load of threads
+        let worker = thread::spawn(move || {
+            let looped = try {
+                for i in 0..5 {
+                    keepalive.clone()?;
+                    i
+                }
+            };
+            looped
+        });
+
+        thread::sleep(Duration::from_secs(1));
+        workerthreads.cancel();
+
+        thread::sleep(Duration::from_secs(1));
+        let count = worker.join().unwrap();
+        assert_eq!(count % 2, 1); // we exited mid loop}
+    }
 }
