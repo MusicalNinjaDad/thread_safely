@@ -56,7 +56,9 @@ impl Controller {
         )
     }
 
-    pub fn cancel(&self) {}
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
 }
 
 impl Try for Context {
