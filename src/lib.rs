@@ -110,15 +110,10 @@ mod tests {
                 true
             })
             .unwrap();
-        let asserter = thread::Builder::new()
-            .name("asserter".to_string())
-            .spawn(move || {
-                let work = worker.join().unwrap();
-                assert!(work);
-            })
-            .unwrap();
         workerthreads.cancel();
         thread::sleep(Duration::from_secs(1));
-        assert!(asserter.is_finished());
+        assert!(worker.is_finished());
+        let work = worker.join().unwrap();
+        assert!(work);
     }
 }
