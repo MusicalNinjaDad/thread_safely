@@ -42,9 +42,11 @@
 //!
 //! # Limitations
 //!
-//! The enclosing `try` block must return `()`. In most cases where long-running loops need
-//! repeatedly to check for cancellation this shouldn't cause an issue as most significant IO
-//! writes to a `buf: &mut [u8]` and infinite loops return `!` which coerces to `()`
+//! - The enclosing `try` block must return `()`. In most cases where long-running loops need
+//!   repeatedly to check for cancellation this shouldn't cause an issue as most significant IO
+//!   writes to a `buf: &mut [u8]` and infinite loops return `!` which coerces to `()`.
+//! - The `Context` which results from the try block is unusable and should not be assigned to a
+//!   variable as it will not include the valid cancellation flag.
 
 use std::{
     ops::{ControlFlow, FromResidual, Residual, Try},
