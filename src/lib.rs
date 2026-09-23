@@ -60,7 +60,7 @@ pub mod prelude {
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    cancelled: Arc<AtomicBool>,
+    cancelled: Option<Arc<AtomicBool>>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +75,9 @@ impl Controller {
             Controller {
                 cancelled: cancelled.clone(),
             },
-            Context { cancelled },
+            Context {
+                cancelled: Some(cancelled),
+            },
         )
     }
 
@@ -90,15 +92,15 @@ impl Try for Context {
     type Residual = Cancelled;
 
     fn from_output(_output: Self::Output) -> Self {
-        unimplemented!("from_output")
+        Self { cancelled: None }
     }
 
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
-        match self.cancelled.load(Ordering::Acquire) {
-            true => ControlFlow::Break(Cancelled {
-                cancelled: self.cancelled,
-            }),
-            false => ControlFlow::Continue(()),
+        match self.cancelled {
+            Some(flag) if flag.load(Ordering::Acquire) => {
+                ControlFlow::Break(Cancelled { cancelled: flag })
+            }
+            _ => ControlFlow::Continue(()),
         }
     }
 }
@@ -106,7 +108,7 @@ impl Try for Context {
 impl FromResidual for Context {
     fn from_residual(residual: Cancelled) -> Self {
         Self {
-            cancelled: residual.cancelled,
+            cancelled: Some(residual.cancelled),
         }
     }
 }
@@ -144,5 +146,28 @@ mod tests {
         assert!(worker.is_finished());
         let work = worker.join().unwrap();
         assert!(work);
+    }
+
+    #[test]
+    fn not_cancelled() {
+        let (_workerthreads, keepalive) = Controller::new();
+        let worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || {
+                let mut counter = 0;
+                try {
+                    for _ in 0..5 {
+                        counter += 1;
+                        assert_eq!(counter % 2, 1); // odd
+                        keepalive.clone()?;
+                        counter += 1;
+                        assert_eq!(counter % 2, 0); // even
+                    }
+                };
+                counter
+            })
+            .unwrap();
+        let count = worker.join().unwrap();
+        assert_eq!(count, 10);
     }
 }
