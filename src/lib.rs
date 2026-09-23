@@ -1,3 +1,4 @@
+#![cfg_attr(unstable_try_blocks, feature(try_blocks))]
 //! Provides a sound way to allow for long-running threads to be cancelled without resorting
 //! to extreme measures
 //!
@@ -24,8 +25,10 @@ pub mod prelude {
     pub use super::{Context, Controller};
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Context {}
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Controller {}
 
 impl Controller {
@@ -34,4 +37,21 @@ impl Controller {
     }
 
     pub fn cancel() {}
+}
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+
+    use super::*;
+
+    #[test]
+    fn cancellation() {
+        let (workerthreads, keepalive) = Controller::new();
+        let _worker = thread::spawn(move || try {
+            loop {
+                keepalive?
+            }
+        });
+    }
 }
