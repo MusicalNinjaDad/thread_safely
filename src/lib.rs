@@ -24,8 +24,11 @@
 //! ```
 
 use std::{
-    ops::{FromResidual, Residual, Try},
-    sync::{Arc, atomic::AtomicBool},
+    ops::{ControlFlow, FromResidual, Residual, Try},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 pub mod prelude {
@@ -65,8 +68,11 @@ impl Try for Context {
         todo!("from output")
     }
 
-    fn branch(self) -> std::ops::ControlFlow<Self::Residual, Self::Output> {
-        todo!("branch")
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self.cancelled.load(Ordering::Acquire) {
+            true => ControlFlow::Break(Cancelled),
+            false => ControlFlow::Continue(self),
+        }
     }
 }
 
@@ -84,23 +90,33 @@ impl Residual<Context> for Cancelled {
 
 #[cfg(test)]
 mod tests {
-    use std::thread;
+    use std::{thread, time::Duration};
 
     use super::*;
 
     #[test]
     fn cancellation() {
         let (workerthreads, keepalive) = Controller::new();
-        let worker = thread::Builder::new().name("worker".to_string()).spawn(move || {
-            try {
-                loop {
-                    keepalive.clone()?;
-                }
-            };
-            true
-        }).unwrap();
+        let worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || {
+                try {
+                    loop {
+                        keepalive.clone()?;
+                    }
+                };
+                true
+            })
+            .unwrap();
+        let asserter = thread::Builder::new()
+            .name("asserter".to_string())
+            .spawn(move || {
+                let work = worker.join().unwrap();
+                assert!(work);
+            })
+            .unwrap();
         workerthreads.cancel();
-        let work = worker.join().unwrap();
-        assert!(work);
+        thread::sleep(Duration::from_secs(1));
+        assert!(asserter.is_finished());
     }
 }
