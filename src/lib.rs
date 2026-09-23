@@ -72,19 +72,21 @@ impl Try for Context {
 
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
         match self.cancelled.load(Ordering::Acquire) {
-            true => ControlFlow::Break(Cancelled),
+            true => ControlFlow::Break(Cancelled{cancelled: self.cancelled}),
             false => ControlFlow::Continue(self),
         }
     }
 }
 
 impl FromResidual for Context {
-    fn from_residual(residual: <Self as Try>::Residual) -> Self {
-        todo!("residual")
+    fn from_residual(residual: Cancelled) -> Self {
+        Self { cancelled: residual.cancelled }
     }
 }
 
-pub struct Cancelled;
+pub struct Cancelled {
+    cancelled: Arc<AtomicBool>,
+}
 
 impl Residual<Context> for Cancelled {
     type TryType = Context;
