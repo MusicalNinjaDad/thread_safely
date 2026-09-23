@@ -67,7 +67,7 @@ impl Try for Context {
     type Residual = Cancelled;
 
     fn from_output(output: Self::Output) -> Self {
-        todo!("from output")
+        output
     }
 
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
