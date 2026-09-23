@@ -7,11 +7,12 @@ keywords = ["thread"]
 authors = ["Mike Foster <https://github.com/MusicalNinjaDad>"]
 repository = "https://github.com/MusicalNinjaDad/thread_safely"
 edition = "2024"
-version = "0.3.0"
+version = "0.0.1"
 
 [dependencies]
+
+[build-dependencies]
 build_safely =  "0.6.1"
-try_v2 = "0.11.0"
 
 [workspace.metadata.ninja-xtask]
 env = { "LD_LIBRARY_PATH" = false }
