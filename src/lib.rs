@@ -2,7 +2,7 @@
 #![cfg_attr(unstable_try_trait_v2, feature(try_trait_v2))]
 #![cfg_attr(unstable_try_trait_v2_residual, feature(try_trait_v2_residual))]
 //! Provides a sound way to allow for long-running threads to be cancelled without resorting
-//! to extreme measures
+//! to extreme measures. Primarily designed to be used with long-running loops / chunked IO.
 //!
 //! # Usage
 //!
@@ -39,6 +39,12 @@
 //! let count = worker.join().unwrap();
 //! assert_eq!(count % 2, 1); // we exited mid loop
 //! ```
+//!
+//! # Limitations
+//!
+//! The enclosing `try` block must return `()`. In most cases where long-running loops need
+//! repeatedly to check for cancellation this shouldn't cause an issue as most significant IO
+//! writes to a `buf: &mut [u8]` and infinite loops return `!` which coerces to `()`
 
 use std::{
     ops::{ControlFlow, FromResidual, Residual, Try},
