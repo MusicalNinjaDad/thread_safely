@@ -7,7 +7,7 @@ keywords = ["thread"]
 authors = ["Mike Foster <https://github.com/MusicalNinjaDad>"]
 repository = "https://github.com/MusicalNinjaDad/thread_safely"
 edition = "2024"
-version = "0.3.0"
+version = "0.0.1"
 
 [dependencies]
 try_v2 = "0.11.0"
