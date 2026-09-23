@@ -1,0 +1,25 @@
+[package]
+name = "thread_safely"
+description = "Allow for safe cancellation of threaded operations"
+categories = ["rust-patterns"]
+license = "MIT"
+keywords = ["thread"]
+authors = ["Mike Foster <https://github.com/MusicalNinjaDad>"]
+repository = "https://github.com/MusicalNinjaDad/thread_safely"
+edition = "2024"
+version = "0.3.0"
+
+[dependencies]
+build_safely =  "0.6.1"
+try_v2 = "0.11.0"
+
+[workspace.metadata.ninja-xtask]
+env = { "LD_LIBRARY_PATH" = false }
+
+[lints]
+# Explicitness
+clippy.allow_attributes = "deny" # use expect instead
+clippy.let_underscore_must_use = "deny" # use expect(unused_must_use, reason = "") instead
+clippy.let_underscore_untyped = "deny"
+clippy.unused_result_ok = "deny"
+clippy.used_underscore_binding = "deny"
