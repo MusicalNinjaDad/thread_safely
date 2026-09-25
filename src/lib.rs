@@ -53,6 +53,7 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     },
 };
 
@@ -61,15 +62,20 @@ pub mod prelude {
 }
 
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct Context<T> {
     cancelled: Option<Arc<AtomicBool>>,
+    reply: mpsc::Sender<T>,
 }
 
-impl Context {
+impl<T> Context<T> {
     pub fn cancelled(&self) -> Cancellation {
         Cancellation {
             cancelled: self.cancelled.clone(),
         }
+    }
+
+    pub fn reply(&self, t: T) -> Result<(), mpsc::SendError<T>> {
+        self.reply.send(t)
     }
 }
 
@@ -77,22 +83,30 @@ pub struct Cancellation {
     cancelled: Option<Arc<AtomicBool>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Controller {
+#[derive(Debug)]
+pub struct Controller<T> {
     cancelled: Arc<AtomicBool>,
+    replies: mpsc::Receiver<T>,
 }
 
-impl Controller {
-    pub fn new() -> (Controller, Context) {
+impl<T> Controller<T> {
+    pub fn new() -> (Controller<T>, Context<T>) {
         let cancelled = Arc::from(AtomicBool::new(false));
+        let (reply, replies) = mpsc::channel::<T>();
         (
             Controller {
                 cancelled: cancelled.clone(),
+                replies,
             },
             Context {
                 cancelled: Some(cancelled),
+                reply,
             },
         )
+    }
+
+    pub fn replies(&self) -> Result<T, mpsc::RecvError> {
+        self.replies.recv()
     }
 
     pub fn cancel(&self) {
@@ -143,7 +157,7 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        let (workerthreads, keepalive) = Controller::new();
+        let (workerthreads, keepalive) = Controller::<!>::new();
         let worker = thread::Builder::new()
             .name("worker".to_string())
             .spawn(move || {
@@ -164,7 +178,7 @@ mod tests {
 
     #[test]
     fn not_cancelled() {
-        let (_workerthreads, keepalive) = Controller::new();
+        let (_workerthreads, keepalive) = Controller::<!>::new();
         let worker = thread::Builder::new()
             .name("worker".to_string())
             .spawn(move || {
@@ -183,5 +197,23 @@ mod tests {
             .unwrap();
         let count = worker.join().unwrap();
         assert_eq!(count, 10);
+    }
+
+    #[test]
+    fn reply() {
+        let (workerthreads, keepalive) = Controller::<i32>::new();
+        let _worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || {
+                for i in 0..=5 {
+                    keepalive.reply(i).unwrap();
+                }
+            })
+            .unwrap();
+        let mut sum = 0;
+        while let Ok(n) = workerthreads.replies() {
+            sum += n;
+        }
+        assert_eq!(sum, 15);
     }
 }
