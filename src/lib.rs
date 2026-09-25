@@ -54,9 +54,10 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc,
     },
 };
+
+use crossbeam_channel::{Receiver, RecvError, SendError, Sender, unbounded};
 
 pub mod prelude {
     pub use super::{Context, Controller};
@@ -65,7 +66,7 @@ pub mod prelude {
 #[derive(Debug, Clone)]
 pub struct Context<T> {
     cancelled: Option<Arc<AtomicBool>>,
-    reply: Option<mpsc::Sender<T>>,
+    reply: Option<Sender<T>>,
 }
 
 /// A default [`Context`] will ignore any data sent via [`.reply()`][Self::reply] and is
@@ -92,7 +93,7 @@ impl<T> Context<T> {
         }
     }
 
-    pub fn reply(&self, t: T) -> Result<(), mpsc::SendError<T>> {
+    pub fn reply(&self, t: T) -> Result<(), SendError<T>> {
         match &self.reply {
             Some(tx_channel) => tx_channel.send(t),
             None => Ok(()),
@@ -107,13 +108,13 @@ pub struct Cancellation {
 #[derive(Debug)]
 pub struct Controller<T> {
     cancelled: Arc<AtomicBool>,
-    replies: mpsc::Receiver<T>,
+    replies: Receiver<T>,
 }
 
 impl<T> Controller<T> {
     pub fn new() -> (Controller<T>, Context<T>) {
         let cancelled = Arc::from(AtomicBool::new(false));
-        let (reply, replies) = mpsc::channel::<T>();
+        let (reply, replies) = unbounded::<T>();
         (
             Controller {
                 cancelled: cancelled.clone(),
@@ -126,7 +127,7 @@ impl<T> Controller<T> {
         )
     }
 
-    pub fn replies(&self) -> Result<T, mpsc::RecvError> {
+    pub fn replies(&self) -> Result<T, RecvError> {
         self.replies.recv()
     }
 
