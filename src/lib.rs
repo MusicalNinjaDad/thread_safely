@@ -23,7 +23,7 @@
 //!         for _ in 0.. {
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 1); // odd
-//!             keepalive.clone()?;
+//!             keepalive.cancelled()?;
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 0); // even
 //!         };
@@ -65,6 +65,18 @@ pub struct Context {
     cancelled: Option<Arc<AtomicBool>>,
 }
 
+impl Context {
+    pub fn cancelled(&self) -> Cancellation {
+        Cancellation {
+            cancelled: self.cancelled.clone(),
+        }
+    }
+}
+
+pub struct Cancellation {
+    cancelled: Option<Arc<AtomicBool>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Controller {
     cancelled: Arc<AtomicBool>,
@@ -88,7 +100,7 @@ impl Controller {
     }
 }
 
-impl Try for Context {
+impl Try for Cancellation {
     type Output = ();
 
     type Residual = Cancelled;
@@ -107,7 +119,7 @@ impl Try for Context {
     }
 }
 
-impl FromResidual for Context {
+impl FromResidual for Cancellation {
     fn from_residual(residual: Cancelled) -> Self {
         Self {
             cancelled: Some(residual.cancelled),
@@ -120,7 +132,7 @@ pub struct Cancelled {
 }
 
 impl Residual<()> for Cancelled {
-    type TryType = Context;
+    type TryType = Cancellation;
 }
 
 #[cfg(test)]
@@ -137,7 +149,7 @@ mod tests {
             .spawn(move || {
                 try {
                     loop {
-                        keepalive.clone()?;
+                        keepalive.cancelled()?;
                     }
                 };
                 true
@@ -161,7 +173,7 @@ mod tests {
                     for _ in 0..5 {
                         counter += 1;
                         assert_eq!(counter % 2, 1); // odd
-                        keepalive.clone()?;
+                        keepalive.cancelled()?;
                         counter += 1;
                         assert_eq!(counter % 2, 0); // even
                     }
