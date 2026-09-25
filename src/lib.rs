@@ -14,7 +14,7 @@
 //! use std::thread;
 //! use thread_safely::prelude::*;
 //! // Set up a [Controller] and (clonable) [Context]
-//! let (workerthreads, keepalive): (Controller, Context) = Controller::new();
+//! let (workerthreads, keepalive) = Controller::<!>::new();
 //!
 //! // set up a load of threads
 //! let worker = thread::spawn(move || {
