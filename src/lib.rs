@@ -105,7 +105,7 @@ pub struct Cancellation {
     cancelled: Option<Arc<AtomicBool>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Controller<T> {
     cancelled: Arc<AtomicBool>,
     replies: Receiver<T>,
