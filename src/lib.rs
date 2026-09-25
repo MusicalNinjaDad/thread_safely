@@ -65,7 +65,34 @@ pub mod prelude {
 pub struct Context<T> {
     cancelled: Option<Arc<AtomicBool>>,
     reply: mpsc::Sender<T>,
+    _dummy_receiver: Option<Arc<mpsc::Receiver<T>>>,
 }
+
+/// A default [`Context`] wraps a dummy [`mpsc::Receiver`] so that [`.reply()`][Self::reply] can
+/// be used without issues and is uncancellable (calls to [`cancelled()?`][Self::cancelled] will
+/// never abort)
+impl<T> Default for Context<T> {
+    fn default() -> Self {
+        let cancelled = None;
+        let (reply, dummy) = mpsc::channel::<T>();
+        let _dummy_receiver = Some(Arc::new(dummy));
+        #[expect(
+            clippy::used_underscore_binding,
+            reason = "_dummy_receiver should never be accessible or used"
+        )]
+        Self {
+            cancelled,
+            reply,
+            _dummy_receiver,
+        }
+    }
+}
+
+/// SAFETY:
+/// - The _dummy_receiver can never be accessed or used to recv(), so sending it across threads in
+///   and Option<Arc> is fine. UB would only occur if there were ever an attempt to receive on the
+///   channel in multiple threads.
+unsafe impl<T> Send for Context<T> {}
 
 impl<T> Context<T> {
     pub fn cancelled(&self) -> Cancellation {
@@ -101,6 +128,7 @@ impl<T> Controller<T> {
             Context {
                 cancelled: Some(cancelled),
                 reply,
+                _dummy_receiver: None,
             },
         )
     }

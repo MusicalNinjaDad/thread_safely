@@ -5,6 +5,7 @@
 ### New features
 
 - Added reply channel
+- impl `Default` for `Context`
 
 ### Breaking Changes
 
