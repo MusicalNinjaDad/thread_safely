@@ -64,26 +64,16 @@ pub mod prelude {
 #[derive(Debug, Clone)]
 pub struct Context<T> {
     cancelled: Option<Arc<AtomicBool>>,
-    reply: mpsc::Sender<T>,
-    _dummy_receiver: Option<Arc<mpsc::Receiver<T>>>,
+    reply: Option<mpsc::Sender<T>>,
 }
 
-/// A default [`Context`] wraps a dummy [`mpsc::Receiver`] so that [`.reply()`][Self::reply] can
-/// be used without issues and is uncancellable (calls to [`cancelled()?`][Self::cancelled] will
-/// never abort)
+/// A default [`Context`] will ignore any data sent via [`.reply()`][Self::reply] and is
+/// uncancellable (calls to [`cancelled()?`][Self::cancelled] will never abort)
 impl<T> Default for Context<T> {
     fn default() -> Self {
-        let cancelled = None;
-        let (reply, dummy) = mpsc::channel::<T>();
-        let _dummy_receiver = Some(Arc::new(dummy));
-        #[expect(
-            clippy::used_underscore_binding,
-            reason = "_dummy_receiver should never be accessible or used"
-        )]
         Self {
-            cancelled,
-            reply,
-            _dummy_receiver,
+            cancelled: None,
+            reply: None,
         }
     }
 }
@@ -102,7 +92,10 @@ impl<T> Context<T> {
     }
 
     pub fn reply(&self, t: T) -> Result<(), mpsc::SendError<T>> {
-        self.reply.send(t)
+        match &self.reply {
+            Some(tx_channel) => tx_channel.send(t),
+            None => Ok(()),
+        }
     }
 }
 
@@ -127,8 +120,7 @@ impl<T> Controller<T> {
             },
             Context {
                 cancelled: Some(cancelled),
-                reply,
-                _dummy_receiver: None,
+                reply: Some(reply),
             },
         )
     }
