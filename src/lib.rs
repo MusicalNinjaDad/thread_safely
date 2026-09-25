@@ -49,6 +49,7 @@
 //!   variable as it will not include the valid cancellation flag.
 
 use std::{
+    io::{self, ErrorKind},
     ops::{ControlFlow, FromResidual, Residual, Try},
     sync::{
         Arc,
@@ -158,6 +159,21 @@ impl FromResidual for Cancellation {
         Self {
             cancelled: Some(residual.cancelled),
         }
+    }
+}
+
+impl<T, E: From<Cancelled>> FromResidual<Cancelled> for Result<T, E> {
+    fn from_residual(residual: Cancelled) -> Self {
+        Err(residual.into())
+    }
+}
+
+impl From<Cancelled> for io::Error {
+    fn from(_: Cancelled) -> Self {
+        io::Error::new(
+            ErrorKind::Interrupted,
+            "thread cancellation requested by controller",
+        )
     }
 }
 
