@@ -127,6 +127,10 @@ impl<T> Controller<T> {
         )
     }
 
+    pub fn receiver(&self) -> Receiver<T> {
+        self.replies.clone()
+    }
+
     pub fn replies(&self) -> Result<T, RecvError> {
         self.replies.recv()
     }
