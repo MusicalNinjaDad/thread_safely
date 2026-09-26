@@ -7,9 +7,10 @@ keywords = ["thread"]
 authors = ["Mike Foster <https://github.com/MusicalNinjaDad>"]
 repository = "https://github.com/MusicalNinjaDad/thread_safely"
 edition = "2024"
-version = "0.0.1"
+version = "0.1.0"
 
 [dependencies]
+crossbeam-channel = "0.5.17"
 
 [build-dependencies]
 build_safely =  "0.6.1"

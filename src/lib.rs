@@ -14,7 +14,7 @@
 //! use std::thread;
 //! use thread_safely::prelude::*;
 //! // Set up a [Controller] and (clonable) [Context]
-//! let (workerthreads, keepalive): (Controller, Context) = Controller::new();
+//! let (controller, context) = Controller::<!>::new();
 //!
 //! // set up a load of threads
 //! let worker = thread::spawn(move || {
@@ -23,16 +23,18 @@
 //!         for _ in 0.. {
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 1); // odd
-//!             keepalive.clone()?;
+//!             context.cancelled()?;
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 0); // even
 //!         };
+//!         // always check for cancellation at end of try-block to avoid type errors
+//!         context.cancelled()?
 //!     };
 //!     counter
 //! });
 //!
 //! // cancel the workers when something happens
-//! workerthreads.cancel();
+//! controller.cancel();
 //!
 //! // You still need to join your threads before you finish for soundness reasons
 //! # thread::sleep(Duration::from_secs(1));
@@ -49,6 +51,8 @@
 //!   variable as it will not include the valid cancellation flag.
 
 use std::{
+    hint::cold_path,
+    io::{self, ErrorKind},
     ops::{ControlFlow, FromResidual, Residual, Try},
     sync::{
         Arc,
@@ -56,31 +60,109 @@ use std::{
     },
 };
 
+use crossbeam_channel::{Receiver, RecvError, SendError, Sender, unbounded};
+
 pub mod prelude {
     pub use super::{Context, Controller};
 }
 
-#[derive(Debug, Clone)]
-pub struct Context {
+#[derive(Debug)]
+pub struct Context<R> {
     cancelled: Option<Arc<AtomicBool>>,
+    reply: Option<Sender<R>>,
+}
+
+impl<R> Clone for Context<R> {
+    fn clone(&self) -> Self {
+        Self {
+            cancelled: self.cancelled.clone(),
+            reply: self.reply.clone(),
+        }
+    }
+}
+
+/// A default [`Context`] will ignore any data sent via [`.reply()`][Self::reply] and is
+/// uncancellable (calls to [`cancelled()?`][Self::cancelled] will never abort)
+impl<R> Default for Context<R> {
+    fn default() -> Self {
+        Self {
+            cancelled: None,
+            reply: None,
+        }
+    }
+}
+
+impl<R> Context<R> {
+    #[inline]
+    /// # IMPORTANT - avoiding type mismatch error [E0271]
+    ///
+    /// When used inside a `try { for { ... } }` loop, always check for cancellation
+    /// at the end of the try block and leave off a semi-colon.
+    ///
+    /// This is both deliberate good practice, to ensure cancellation occurs if requested
+    /// AND avoids a compiler error.
+    ///
+    /// Without this final check you will receive a compiler error.
+    ///
+    /// **To avoid**
+    ///
+    /// ```text
+    ///     error[E0271]: type mismatch resolving `<Context<_> as Try>::Output == ()`
+    /// ```
+    ///
+    /// **do this**
+    ///
+    /// ```ignore snippet
+    ///     try {
+    ///         for chunk in work {
+    ///             cx.cancelled()?;
+    ///             ... do some work ...
+    ///             cx.cancelled()?;
+    ///             ... do some more work ...
+    ///         };
+    ///         cx.cancelled()? // <- NO `;` - the try block returns a clone of the context
+    ///     }
+    /// ```
+    pub fn cancelled(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn reply(&self, reply: R) -> Result<(), SendError<R>> {
+        match &self.reply {
+            Some(tx_channel) => tx_channel.send(reply),
+            None => Ok(()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct Controller {
+pub struct Controller<R> {
     cancelled: Arc<AtomicBool>,
+    replies: Receiver<R>,
 }
 
-impl Controller {
-    pub fn new() -> (Controller, Context) {
+impl<R> Controller<R> {
+    pub fn new() -> (Controller<R>, Context<R>) {
         let cancelled = Arc::from(AtomicBool::new(false));
+        let (reply, replies) = unbounded::<R>();
         (
             Controller {
                 cancelled: cancelled.clone(),
+                replies,
             },
             Context {
                 cancelled: Some(cancelled),
+                reply: Some(reply),
             },
         )
+    }
+
+    pub fn receiver(&self) -> Receiver<R> {
+        self.replies.clone()
+    }
+
+    pub fn replies(&self) -> Result<R, RecvError> {
+        self.replies.recv()
     }
 
     pub fn cancel(&self) {
@@ -88,39 +170,54 @@ impl Controller {
     }
 }
 
-impl Try for Context {
-    type Output = ();
+impl<R> Try for Context<R> {
+    type Output = Self;
 
-    type Residual = Cancelled;
+    type Residual = Self;
 
-    fn from_output(_output: Self::Output) -> Self {
-        Self { cancelled: None }
+    #[inline]
+    fn from_output(output: Self::Output) -> Self {
+        output
     }
 
+    #[inline]
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
-        match self.cancelled {
+        match &self.cancelled {
             Some(flag) if flag.load(Ordering::Acquire) => {
-                ControlFlow::Break(Cancelled { cancelled: flag })
+                cold_path();
+                ControlFlow::Break(self)
             }
-            _ => ControlFlow::Continue(()),
+            _ => ControlFlow::Continue(self),
         }
     }
 }
 
-impl FromResidual for Context {
-    fn from_residual(residual: Cancelled) -> Self {
-        Self {
-            cancelled: Some(residual.cancelled),
-        }
+impl<R> FromResidual for Context<R> {
+    #[inline]
+    fn from_residual(residual: Self) -> Self {
+        residual
     }
 }
 
-pub struct Cancelled {
-    cancelled: Arc<AtomicBool>,
+impl<R, T, E: From<Context<R>>> FromResidual<Context<R>> for Result<T, E> {
+    #[inline]
+    fn from_residual(residual: Context<R>) -> Self {
+        Err(residual.into())
+    }
 }
 
-impl Residual<()> for Cancelled {
-    type TryType = Context;
+impl<R> From<Context<R>> for io::Error {
+    #[inline]
+    fn from(_: Context<R>) -> Self {
+        io::Error::new(
+            ErrorKind::Interrupted,
+            "thread cancellation requested by controller",
+        )
+    }
+}
+
+impl<R> Residual<Context<R>> for Context<R> {
+    type TryType = Context<R>;
 }
 
 #[cfg(test)]
@@ -131,13 +228,13 @@ mod tests {
 
     #[test]
     fn cancellation() {
-        let (workerthreads, keepalive) = Controller::new();
+        let (workerthreads, keepalive) = Controller::<!>::new();
         let worker = thread::Builder::new()
             .name("worker".to_string())
             .spawn(move || {
                 try {
                     loop {
-                        keepalive.clone()?;
+                        keepalive.cancelled()?;
                     }
                 };
                 true
@@ -152,7 +249,7 @@ mod tests {
 
     #[test]
     fn not_cancelled() {
-        let (_workerthreads, keepalive) = Controller::new();
+        let (_workerthreads, keepalive) = Controller::<!>::new();
         let worker = thread::Builder::new()
             .name("worker".to_string())
             .spawn(move || {
@@ -161,15 +258,36 @@ mod tests {
                     for _ in 0..5 {
                         counter += 1;
                         assert_eq!(counter % 2, 1); // odd
-                        keepalive.clone()?;
+                        keepalive.cancelled()?;
                         counter += 1;
                         assert_eq!(counter % 2, 0); // even
                     }
+                    // homogeneity requires calling `cancelled()?` WITHOUT `;` at end of `try`-block
+                    // TODO: is there a way to help the compiler to hint this solution on type mismatch?
+                    keepalive.cancelled()?
                 };
                 counter
             })
             .unwrap();
         let count = worker.join().unwrap();
         assert_eq!(count, 10);
+    }
+
+    #[test]
+    fn reply() {
+        let (workerthreads, keepalive) = Controller::<i32>::new();
+        let _worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || {
+                for i in 0..=5 {
+                    keepalive.reply(i).unwrap();
+                }
+            })
+            .unwrap();
+        let mut sum = 0;
+        while let Ok(n) = workerthreads.replies() {
+            sum += n;
+        }
+        assert_eq!(sum, 15);
     }
 }
