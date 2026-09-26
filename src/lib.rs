@@ -27,6 +27,8 @@
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 0); // even
 //!         };
+//!         // always check for cancellation at end of try-block to avoid type errors
+//!         context.cancelled()?
 //!     };
 //!     counter
 //! });
@@ -135,12 +137,12 @@ impl<T> Controller<T> {
 }
 
 impl Try for Cancellation {
-    type Output = ();
+    type Output = Self;
 
     type Residual = Cancelled;
 
-    fn from_output(_output: Self::Output) -> Self {
-        Self { cancelled: None }
+    fn from_output(output: Self::Output) -> Self {
+        output
     }
 
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
@@ -148,7 +150,7 @@ impl Try for Cancellation {
             Some(flag) if flag.load(Ordering::Acquire) => {
                 ControlFlow::Break(Cancelled { cancelled: flag })
             }
-            _ => ControlFlow::Continue(()),
+            _ => ControlFlow::Continue(self),
         }
     }
 }
@@ -180,7 +182,7 @@ pub struct Cancelled {
     cancelled: Arc<AtomicBool>,
 }
 
-impl Residual<()> for Cancelled {
+impl Residual<Cancellation> for Cancelled {
     type TryType = Cancellation;
 }
 
@@ -226,6 +228,9 @@ mod tests {
                         counter += 1;
                         assert_eq!(counter % 2, 0); // even
                     }
+                    // homogeneity requires calling `cancelled()?` WITHOUT `;` at end of `try`-block
+                    // TODO: is there a way to help the compiler to hint this solution on type mismatch?
+                    keepalive.cancelled()?
                 };
                 counter
             })
