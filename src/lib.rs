@@ -14,7 +14,7 @@
 //! use std::thread;
 //! use thread_safely::prelude::*;
 //! // Set up a [Controller] and (clonable) [Context]
-//! let (workerthreads, keepalive) = Controller::<!>::new();
+//! let (controller, context) = Controller::<!>::new();
 //!
 //! // set up a load of threads
 //! let worker = thread::spawn(move || {
@@ -23,7 +23,7 @@
 //!         for _ in 0.. {
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 1); // odd
-//!             keepalive.cancelled()?;
+//!             context.cancelled()?;
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 0); // even
 //!         };
@@ -32,7 +32,7 @@
 //! });
 //!
 //! // cancel the workers when something happens
-//! workerthreads.cancel();
+//! controller.cancel();
 //!
 //! // You still need to join your threads before you finish for soundness reasons
 //! # thread::sleep(Duration::from_secs(1));
