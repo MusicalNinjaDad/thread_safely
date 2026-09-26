@@ -65,15 +65,24 @@ pub mod prelude {
     pub use super::{Context, Controller};
 }
 
-#[derive(Debug, Clone)]
-pub struct Context<T> {
+#[derive(Debug)]
+pub struct Context<R> {
     cancelled: Option<Arc<AtomicBool>>,
-    reply: Option<Sender<T>>,
+    reply: Option<Sender<R>>,
+}
+
+impl<R> Clone for Context<R> {
+    fn clone(&self) -> Self {
+        Self {
+            cancelled: self.cancelled.clone(),
+            reply: self.reply.clone(),
+        }
+    }
 }
 
 /// A default [`Context`] will ignore any data sent via [`.reply()`][Self::reply] and is
 /// uncancellable (calls to [`cancelled()?`][Self::cancelled] will never abort)
-impl<T> Default for Context<T> {
+impl<R> Default for Context<R> {
     fn default() -> Self {
         Self {
             cancelled: None,
@@ -82,35 +91,29 @@ impl<T> Default for Context<T> {
     }
 }
 
-impl<T> Context<T> {
-    pub fn cancelled(&self) -> Cancellation {
-        Cancellation {
-            cancelled: self.cancelled.clone(),
-        }
+impl<R> Context<R> {
+    pub fn cancelled(&self) -> Self {
+        self.clone()
     }
 
-    pub fn reply(&self, t: T) -> Result<(), SendError<T>> {
+    pub fn reply(&self, reply: R) -> Result<(), SendError<R>> {
         match &self.reply {
-            Some(tx_channel) => tx_channel.send(t),
+            Some(tx_channel) => tx_channel.send(reply),
             None => Ok(()),
         }
     }
 }
 
-pub struct Cancellation {
-    cancelled: Option<Arc<AtomicBool>>,
-}
-
 #[derive(Debug, Clone)]
-pub struct Controller<T> {
+pub struct Controller<R> {
     cancelled: Arc<AtomicBool>,
-    replies: Receiver<T>,
+    replies: Receiver<R>,
 }
 
-impl<T> Controller<T> {
-    pub fn new() -> (Controller<T>, Context<T>) {
+impl<R> Controller<R> {
+    pub fn new() -> (Controller<R>, Context<R>) {
         let cancelled = Arc::from(AtomicBool::new(false));
-        let (reply, replies) = unbounded::<T>();
+        let (reply, replies) = unbounded::<R>();
         (
             Controller {
                 cancelled: cancelled.clone(),
@@ -123,11 +126,11 @@ impl<T> Controller<T> {
         )
     }
 
-    pub fn receiver(&self) -> Receiver<T> {
+    pub fn receiver(&self) -> Receiver<R> {
         self.replies.clone()
     }
 
-    pub fn replies(&self) -> Result<T, RecvError> {
+    pub fn replies(&self) -> Result<R, RecvError> {
         self.replies.recv()
     }
 
@@ -136,41 +139,37 @@ impl<T> Controller<T> {
     }
 }
 
-impl Try for Cancellation {
+impl<R> Try for Context<R> {
     type Output = Self;
 
-    type Residual = Cancelled;
+    type Residual = Self;
 
     fn from_output(output: Self::Output) -> Self {
         output
     }
 
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
-        match self.cancelled {
-            Some(flag) if flag.load(Ordering::Acquire) => {
-                ControlFlow::Break(Cancelled { cancelled: flag })
-            }
+        match &self.cancelled {
+            Some(flag) if flag.load(Ordering::Acquire) => ControlFlow::Break(self),
             _ => ControlFlow::Continue(self),
         }
     }
 }
 
-impl FromResidual for Cancellation {
-    fn from_residual(residual: Cancelled) -> Self {
-        Self {
-            cancelled: Some(residual.cancelled),
-        }
+impl<R> FromResidual for Context<R> {
+    fn from_residual(residual: Self) -> Self {
+        residual
     }
 }
 
-impl<T, E: From<Cancelled>> FromResidual<Cancelled> for Result<T, E> {
-    fn from_residual(residual: Cancelled) -> Self {
+impl<R, T, E: From<Context<R>>> FromResidual<Context<R>> for Result<T, E> {
+    fn from_residual(residual: Context<R>) -> Self {
         Err(residual.into())
     }
 }
 
-impl From<Cancelled> for io::Error {
-    fn from(_: Cancelled) -> Self {
+impl<R> From<Context<R>> for io::Error {
+    fn from(_: Context<R>) -> Self {
         io::Error::new(
             ErrorKind::Interrupted,
             "thread cancellation requested by controller",
@@ -178,12 +177,8 @@ impl From<Cancelled> for io::Error {
     }
 }
 
-pub struct Cancelled {
-    cancelled: Arc<AtomicBool>,
-}
-
-impl Residual<Cancellation> for Cancelled {
-    type TryType = Cancellation;
+impl<R> Residual<Context<R>> for Context<R> {
+    type TryType = Context<R>;
 }
 
 #[cfg(test)]
