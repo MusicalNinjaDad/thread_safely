@@ -51,6 +51,7 @@
 //!   variable as it will not include the valid cancellation flag.
 
 use std::{
+    hint::cold_path,
     io::{self, ErrorKind},
     ops::{ControlFlow, FromResidual, Residual, Try},
     sync::{
@@ -92,6 +93,7 @@ impl<R> Default for Context<R> {
 }
 
 impl<R> Context<R> {
+    #[inline]
     pub fn cancelled(&self) -> Self {
         self.clone()
     }
@@ -144,31 +146,39 @@ impl<R> Try for Context<R> {
 
     type Residual = Self;
 
+    #[inline]
     fn from_output(output: Self::Output) -> Self {
         output
     }
 
+    #[inline]
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
         match &self.cancelled {
-            Some(flag) if flag.load(Ordering::Acquire) => ControlFlow::Break(self),
+            Some(flag) if flag.load(Ordering::Acquire) => {
+                cold_path();
+                ControlFlow::Break(self)
+            }
             _ => ControlFlow::Continue(self),
         }
     }
 }
 
 impl<R> FromResidual for Context<R> {
+    #[inline]
     fn from_residual(residual: Self) -> Self {
         residual
     }
 }
 
 impl<R, T, E: From<Context<R>>> FromResidual<Context<R>> for Result<T, E> {
+    #[inline]
     fn from_residual(residual: Context<R>) -> Self {
         Err(residual.into())
     }
 }
 
 impl<R> From<Context<R>> for io::Error {
+    #[inline]
     fn from(_: Context<R>) -> Self {
         io::Error::new(
             ErrorKind::Interrupted,
