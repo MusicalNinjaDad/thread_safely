@@ -94,6 +94,35 @@ impl<R> Default for Context<R> {
 
 impl<R> Context<R> {
     #[inline]
+    /// # IMPORTANT - avoiding type mismatch error [E0271]
+    ///
+    /// When used inside a `try { for { ... } }` loop, always check for cancellation
+    /// at the end of the try block and leave off a semi-colon.
+    ///
+    /// This is both deliberate good practice, to ensure cancellation occurs if requested
+    /// AND avoids a compiler error.
+    ///
+    /// Without this final check you will receive a compiler error.
+    ///
+    /// **To avoid**
+    ///
+    /// ```text
+    ///     error[E0271]: type mismatch resolving `<Context<_> as Try>::Output == ()`
+    /// ```
+    ///
+    /// **do this**
+    ///
+    /// ```ignore snippet
+    ///     try {
+    ///         for chunk in work {
+    ///             cx.cancelled()?;
+    ///             ... do some work ...
+    ///             cx.cancelled()?;
+    ///             ... do some more work ...
+    ///         };
+    ///         cx.cancelled()? // <- NO `;` - the try block returns a clone of the context
+    ///     }
+    /// ```
     pub fn cancelled(&self) -> Self {
         self.clone()
     }
