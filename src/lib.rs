@@ -80,12 +80,6 @@ impl<T> Default for Context<T> {
     }
 }
 
-/// SAFETY:
-/// - The _dummy_receiver can never be accessed or used to recv(), so sending it across threads in
-///   and Option<Arc> is fine. UB would only occur if there were ever an attempt to receive on the
-///   channel in multiple threads.
-unsafe impl<T> Send for Context<T> {}
-
 impl<T> Context<T> {
     pub fn cancelled(&self) -> Cancellation {
         Cancellation {
