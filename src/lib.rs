@@ -42,6 +42,46 @@
 //! assert_eq!(count % 2, 1); // we exited mid loop
 //! ```
 //!
+//! # Libraries
+//!
+//! ```
+//! // Libraries usually won't need a Controller
+//! use thread_safely::Context;
+//!
+//! pub struct Thing {
+//!     // all the stuff we need
+//!     data: usize,
+//!     // No need to store the context in an Option
+//!     // reply channel accepts e.g. a f32 for %-completion
+//!     cx: Context<f32>,
+//! }
+//!
+//! impl Thing {
+//!     // new constructor doesn't require a Context.
+//!     // The default context is designed to produce no-ops
+//!     fn new(data: usize) -> Self {
+//!         Self { data, cx: Context::default() }
+//!     }
+//!
+//!     // dedicated constructor for those who wish to use a Context
+//!     fn with_context(data: usize, cx: Context<f32>) -> Self {
+//!         // assuming new has a load of logic we don't want to reproduce here
+//!         let mut this = Self::new(data);
+//!         this.add_context(cx);
+//!         this
+//!     }
+//!
+//!     // may as well allow users to add a Context to an existing Thing,
+//!     // that way they can construct via `From` etc if they want or pass on the
+//!     // optionality of using Contexts
+//!     fn add_context(&mut self, cx: Context::<f32>) {
+//!         self.cx = cx;
+//!         // if you have a chaining API, then you can return
+//!         // self
+//!     }
+//! }
+//! ```
+//!
 //! # Limitations
 //!
 //! - The enclosing `try` block must return `()`. In most cases where long-running loops need
