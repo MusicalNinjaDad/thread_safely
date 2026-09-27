@@ -216,6 +216,13 @@ impl<R> From<Context<R>> for io::Error {
     }
 }
 
+impl<R, T> FromResidual<Context<R>> for Option<T> {
+    #[inline]
+    fn from_residual(_residual: Context<R>) -> Self {
+        None
+    }
+}
+
 impl<R> Residual<Context<R>> for Context<R> {
     type TryType = Context<R>;
 }
@@ -245,6 +252,25 @@ mod tests {
         assert!(worker.is_finished());
         let work = worker.join().unwrap();
         assert!(work);
+    }
+
+    #[test]
+    fn option() {
+        let (_controller, cx) = Controller::<!>::new();
+
+        fn maybe<T>(value: T, cx: Context<!>) -> Option<T> {
+            cx.cancelled()?;
+            Some(value)
+        }
+
+        let worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || maybe(5, cx))
+            .unwrap();
+        thread::sleep(Duration::from_secs(1));
+        assert!(worker.is_finished());
+        let work = worker.join().unwrap();
+        assert_eq!(work, Some(5));
     }
 
     #[test]
