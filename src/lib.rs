@@ -45,14 +45,15 @@
 //! # Libraries
 //!
 //! ```
+//! #![cfg_attr(unstable_try_blocks, feature(try_blocks))]
 //! // Libraries usually won't need a Controller
 //! use thread_safely::Context;
 //!
 //! pub struct Thing {
 //!     // all the stuff we need
 //!     data: usize,
-//!     // No need to store the context in an Option
-//!     // reply channel accepts e.g. a f32 for %-completion
+//!     // No need to store the context in an Option, just use Default
+//!     // Our example reply channel accepts a f32 for %-completion
 //!     cx: Context<f32>,
 //! }
 //!
@@ -78,6 +79,41 @@
 //!         self.cx = cx;
 //!         // if you have a chaining API, then you can return
 //!         // self
+//!     }
+//!
+//!     // Check the context in long-running functions
+//!     fn work(self, repetitions: usize) -> Option<usize> {
+//!         let mut product = 0;
+//!         let mut needs_cleaning = true;
+//!
+//!         // We can't exit the function immediately without clean-up,
+//!         // so wrap the loop in a try-block
+//!         try {
+//!             for i in 0..repetitions {
+//!                 // don't do work if we've been cancelled
+//!                 self.cx.cancelled()?;
+//!                 // do some blocking work
+//!                 product += self.data;
+//!                 // let them know how we are progressing
+//!                 self.cx.reply(i as f32 / repetitions as f32);
+//!             };
+//!             
+//!             // check for cancellation after last loop before doing anything else ...
+//!             self.cx.cancelled()?;
+//!
+//!             // a few final steps, which we should skip if cancelled
+//!             debug_assert_eq!(product, self.data * repetitions);
+//!
+//!             // final check to please the compiler (see Context::cancelled for detials)
+//!             self.cx.cancelled()? // no `;`
+//!         };
+//!
+//!         // perform the mandatory clean up
+//!         needs_cleaning = false;
+//!         // now we can exit the function safely if cancelled
+//!         self.cx.cancelled()?;
+//!         // otherwise we return
+//!         Some(product)
 //!     }
 //! }
 //! ```
