@@ -104,7 +104,7 @@
 //!             // a few final steps, which we should skip if cancelled
 //!             debug_assert_eq!(product, self.data * repetitions);
 //!
-//!             // final check to please the compiler (see Context::cancelled for detials)
+//!             // final check to please the compiler (see Context::cancelled for details)
 //!             self.cx.cancelled()? // no `;`
 //!         };
 //!
