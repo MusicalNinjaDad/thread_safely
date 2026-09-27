@@ -27,7 +27,7 @@
 //!             counter += 1;
 //!             assert_eq!(counter % 2, 0); // even
 //!         };
-//!         // always check for cancellation at end of try-block to avoid type errors
+//!         // always check for cancellation at end of try-block
 //!         context.cancelled()?
 //!     };
 //!     counter
