@@ -1,5 +1,11 @@
 # thread_safely changelog
 
+## [v0.1.1]
+
+### New features
+
+- also works in blocks/functions which return `Option` or `ControlFlow`
+
 ## [v0.1.0]
 
 ### New features

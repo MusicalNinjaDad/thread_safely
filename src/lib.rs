@@ -216,6 +216,20 @@ impl<R> From<Context<R>> for io::Error {
     }
 }
 
+impl<R, T> FromResidual<Context<R>> for Option<T> {
+    #[inline]
+    fn from_residual(_residual: Context<R>) -> Self {
+        None
+    }
+}
+
+impl<R, B: Default, C> FromResidual<Context<R>> for ControlFlow<B, C> {
+    #[inline]
+    fn from_residual(_residual: Context<R>) -> Self {
+        ControlFlow::Break(B::default())
+    }
+}
+
 impl<R> Residual<Context<R>> for Context<R> {
     type TryType = Context<R>;
 }
@@ -245,6 +259,65 @@ mod tests {
         assert!(worker.is_finished());
         let work = worker.join().unwrap();
         assert!(work);
+    }
+
+    #[test]
+    fn option() {
+        let (_controller, cx) = Controller::<!>::new();
+
+        fn maybe<T>(value: T, cx: Context<!>) -> Option<T> {
+            cx.cancelled()?;
+            Some(value)
+        }
+
+        let worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || maybe(5, cx))
+            .unwrap();
+        thread::sleep(Duration::from_secs(1));
+        assert!(worker.is_finished());
+        let work = worker.join().unwrap();
+        assert_eq!(work, Some(5));
+    }
+
+    #[test]
+    fn control_flow_continue() {
+        let (_controller, cx) = Controller::<!>::new();
+
+        fn maybe<T: Default>(value: T, cx: Context<!>) -> ControlFlow<T, T> {
+            cx.cancelled()?;
+            ControlFlow::Continue(value)
+        }
+
+        let worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || maybe(5, cx))
+            .unwrap();
+        thread::sleep(Duration::from_secs(1));
+        assert!(worker.is_finished());
+        let work = worker.join().unwrap();
+        assert_eq!(work, ControlFlow::Continue(5));
+    }
+
+    #[test]
+    fn control_flow_break() {
+        let (controller, cx) = Controller::<!>::new();
+
+        fn maybe<T: Default>(_value: T, cx: Context<!>) -> ControlFlow<T, T> {
+            loop {
+                cx.cancelled()?;
+            }
+        }
+
+        let worker = thread::Builder::new()
+            .name("worker".to_string())
+            .spawn(move || maybe(5, cx))
+            .unwrap();
+        controller.cancel();
+        thread::sleep(Duration::from_secs(1));
+        assert!(worker.is_finished());
+        let work = worker.join().unwrap();
+        assert_eq!(work, ControlFlow::Break(0));
     }
 
     #[test]
